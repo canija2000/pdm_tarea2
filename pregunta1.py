@@ -128,6 +128,7 @@ def main():
     # python pregunta1.py "pregunta a responder" --k [numero maximo de documentos a recuperar]
     parser = argparse.ArgumentParser(description="Flujo de RAG Denso (Parte 1)")
     parser.add_argument("query", type=str, help="Pregunta a responder")
+    parser.add_argument("-t", type= int, default=0, help = "Tipo de mecanismo de recuperación de chunks (0: HNSW_TOP_K, 1:  ALL_CHUNKS)")
     parser.add_argument("--k", type=int, default=5, help="Número de documentos a recuperar")
     args = parser.parse_args()
 
