@@ -44,3 +44,4 @@ wheels/
 *.gz
 /base_datos_t2
 .env
+*.pkl

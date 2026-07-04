@@ -1,6 +1,5 @@
 from typing import Any
 import re
-import millenniumdb_driver as mdb
 # from millenniumdb_driver.millenniumdb_error import Result
 
 # Validar strings

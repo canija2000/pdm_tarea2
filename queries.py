@@ -51,6 +51,14 @@ RETURN ?c, ?c.content AS ?content, ?distance
 '''
 
 # Parametros (?chunk)
+GET_CHUNK_WITH_INTERVENTION = '''
+LET ?c = ?chunk
+MATCH (?i :Intervention)-[:HasEmbedding]->(?c)
+RETURN ?c, ?i, ?c.content AS ?content
+LIMIT 1
+'''
+
+# Parametros (?chunk)
 GET_INTERVENTION = '''
 LET ?c = ?chunk
 MATCH (?i :Intervention)-[:HasEmbedding]->(?c)
