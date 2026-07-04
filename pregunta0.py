@@ -36,7 +36,7 @@ def main():
         session = db.session()
         result = q_run(session, q.ALL_COUNT)
         all_count = result.values()[0][0]
-        print_success(f"Resultado consulta: {all_count}")
+        print_success(f"Resultado consulta: {Colors.BOLD}{all_count}{Colors.END}")
     except Exception as e:
         print_error(f"Error al ejecutar: {e}")
 

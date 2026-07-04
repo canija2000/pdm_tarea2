@@ -8,4 +8,12 @@ API_KEY = 'api-key'
 MODEL = 'intfloat/multilingual-e5-base'
 
 # ENTERO PARA TOP-K HNSW
-K = 10
+K = 5
+
+# PROMPT DE SISTEMA
+SYSTEM_PROMPT = """
+Eres un asistente experto en analizar intervenciones del poder legislativo chileno.
+Responde la siguiente pregunta basándote ÚNICAMENTE en el contexto proporcionado.
+Si el contexto no contiene la respuesta, di que no tienes suficiente información.
+Cita las intervenciones que uses.
+"""

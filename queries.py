@@ -32,14 +32,45 @@ RETURN COUNT(*) as ?count
 
 # Parametros (?query_embedding)
 # Reemplazos (?k)
-TOP_K_QUERY = '''
+DENSE_TOP_K_QUERY = '''
 LET ?q = ?query_embedding
-MATCH (?i :Intervention)-[:HasEmbedding]->(?chunk :Embedding)
-LET ?d = COSINE_DISTANCE(?q, ?chunk.value)
-ORDER BY ?d
-RETURN DISTINCT ?i
+MATCH (?c :Embedding)
+LET ?distance = COSINE_DISTANCE(?q, ?c.value)
+ORDER BY ?distance
+RETURN ?c, ?c.content as ?content, ?distance
 LIMIT ?k
 '''
+
+# Parametros (?query_embedding)
+# Reemplazos (?k)
+HNSW_TOP_K_QUERY = '''
+LET ?q = ?query_embedding
+CALL HNSW_TOP_K("mi_indice", ?q, ?k, 1000)
+YIELD ?object AS ?c, ?distance
+RETURN ?c, ?c.content AS ?content, ?distance
+'''
+
+# Parametros (?chunk)
+GET_INTERVENTION = '''
+LET ?c = ?chunk
+MATCH (?i :Intervention)-[:HasEmbedding]->(?c)
+RETURN ?i
+LIMIT 1
+'''
+
+
+# Parametros (?query_embedding)
+# Reemplazos (?k)
+# TOP_K_QUERY = '''
+# LET ?q = ?query_embedding
+# MATCH (?chunk_aux :Embedding)<-[:HasEmbedding]-(?i :Intervention)-[:HasEmbedding]->(?chunk :Embedding)
+# LET ?d = COSINE_DISTANCE(?q, ?chunk.value)
+# LET ?d_aux = COSINE_DISTANCE(?q, ?chunk_aux.value)
+# GROUP BY ?i, ?chunk, ?d
+# HAVING ?min_distance == ?d
+# RETURN ?i, MIN(?d_aux) AS ?min_distance, ?chunk, ?d
+# LIMIT ?k
+# '''
 
 # Parametros (?intervention)
 ALL_CHUNKS = '''
