@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+
 TOKEN_RE = re.compile(r"[a-zA-Z0-9áéíóúüñÁÉÍÓÚÜÑ]+")
 
 
@@ -15,22 +16,22 @@ def tokenize(text: str) -> list[str]:
     without_accents = "".join(c for c in normalized if not unicodedata.combining(c))
     return TOKEN_RE.findall(without_accents)
 
-
+# estructuras de datos para representar docs/ y rresultados ttras busqueda en indice.
 @dataclass
 class SparseDocument:
-    doc_id: str
-    intervention_id: str
-    content: str
+    doc_id: str # id del chunk
+    intervention_id: str # id de la intervencion 
+    content: str # contenido del chunk
 
 
 @dataclass
 class RetrievalResult:
-    doc_id: str
-    intervention_id: str
+    doc_id: str # id del chunk que se recupero en el match [por score]
+    intervention_id: str 
     content: str
-    score: float
-    rank: int
-    source: str
+    score: float # score obtenido en la busqueda
+    rank: int # rank del resultado en la lista de resultados
+    source: str 
 
 
 class BM25Index:
@@ -46,13 +47,14 @@ class BM25Index:
         self.term_frequencies = [Counter(tokens) for tokens in self.tokenized_docs]
         self.idf = self._compute_idf()
 
+    # construimos el indice de rareza para todos los docs 
     def _compute_idf(self) -> dict[str, float]:
         doc_freq = defaultdict(int)
         total_docs = len(self.tokenized_docs)
 
         for tokens in self.tokenized_docs:
             for token in set(tokens):
-                doc_freq[token] += 1
+                doc_freq[token] += 1 #construimos la freq de cada tok x documento.
 
         return {
             token: math.log(1 + (total_docs - freq + 0.5) / (freq + 0.5))

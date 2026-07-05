@@ -45,3 +45,8 @@ wheels/
 /base_datos_t2
 .env
 *.pkl
+*.aux
+*.log
+*.fdb_latexmk
+*.fls 
+*.out 

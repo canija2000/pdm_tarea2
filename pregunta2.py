@@ -23,6 +23,9 @@ def get_embedding(text: str) -> list[float]:
     embedding = embedding_model.encode(prefixed_text, normalize_embeddings=True)
     return embedding.tolist()
 
+
+HNSW_INDEX_NAME = "hnsw_vectors"
+
 def conect_mdb():
     url = "ws://localhost:1234"
     db = driver(url)
@@ -31,14 +34,16 @@ def conect_mdb():
 def retrieve_from_millennium_graphrag(query_vector: list[float], patron: int, filtro: str, k: int = 5) -> list[tuple[str, str, float]]:
     mdb = conect_mdb()
     vector_str = str(query_vector)
+    hnsw_candidates = max(k * 200, 10000)
     
     if patron == 1:
         # Frente 1: Restricción tipada (ej: Solo intervenciones de un partido específico)
         mql_query = f"""
         LET ?q = tensorFloat("{vector_str}")
-        MATCH (?i:Intervention)-[:DeliveredBy]->(?pos:Position)-[:Represents]->(?party:PoliticalParty {{name: "{filtro}"}})
-        MATCH (?i)-[:HasEmbedding]->(?c)
-        LET ?dist = COSINE_DISTANCE(?q, ?c.value)
+        CALL HNSW_TOP_K("{HNSW_INDEX_NAME}", ?q, {hnsw_candidates}, 1000)
+        YIELD ?object AS ?c, ?dist
+        MATCH (?i:Intervention)-[:HasEmbedding]->(?c)
+        MATCH (?i)-[:DeliveredBy]->(?pos:Position)-[:Represents]->(?party:PoliticalParty {{name: "{filtro}"}})
         ORDER BY ?dist ASC
         RETURN ?c.content, "{filtro}", ?dist
         LIMIT {k}
@@ -47,21 +52,25 @@ def retrieve_from_millennium_graphrag(query_vector: list[float], patron: int, fi
         # Frente 2: Agregación / Contraste (ej: Recuperamos el género de la persona para contrastar)
         mql_query = f"""
         LET ?q = tensorFloat("{vector_str}")
-        MATCH (?p:Person)-[:ServedAs]->(?pos:Position)<-[:DeliveredBy]-(?i:Intervention)
-        MATCH (?i)-[:HasEmbedding]->(?c)
-        LET ?dist = COSINE_DISTANCE(?q, ?c.value)
+        CALL HNSW_TOP_K("{HNSW_INDEX_NAME}", ?q, {hnsw_candidates}, 1000)
+        YIELD ?object AS ?c, ?dist
+        MATCH (?i:Intervention)-[:HasEmbedding]->(?c)
+        MATCH (?p:Person)-[:ServedAs]->(?pos:Position)<-[:DeliveredBy]-(?i)
         ORDER BY ?dist ASC
         RETURN ?c.content, ?p.gender, ?dist
         LIMIT {k}
         """
+
     elif patron == 3:
         # Frente 3: Filtro numérico o temporal (ej: Intervenciones de sesiones posteriores a una fecha)
+        # HNSW trae candidatos por similitud; luego el MATCH conserva solo los que cumplen el patron temporal.
         mql_query = f"""
         LET ?q = tensorFloat("{vector_str}")
-        MATCH (?i:Intervention)-[:HasIntervention]->(?proc:Procedure)-[:OCCURRED_IN]->(?s:Session)
-        MATCH (?i)-[:HasEmbedding]->(?c)
+        CALL HNSW_TOP_K("{HNSW_INDEX_NAME}", ?q, {hnsw_candidates}, 1000)
+        YIELD ?object AS ?c, ?dist
+        MATCH (?i:Intervention)-[:HasEmbedding]->(?c)
+        MATCH (?i)-[:HasIntervention]->(?proc:Procedure)-[:OCCURRED_IN]->(?s:Session)
         WHERE ?s.date > date("{filtro}") 
-        LET ?dist = COSINE_DISTANCE(?q, ?c.value)
         ORDER BY ?dist ASC
         RETURN ?c.content, ?s.date, ?dist
         LIMIT {k}

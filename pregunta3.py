@@ -12,6 +12,11 @@ import queries as q
 from build_sparse_index import DEFAULT_INDEX_PATH
 from sparse_retriever import BM25Index, RetrievalResult, reciprocal_rank_fusion
 from utils import get_embedding, q_run
+from openai import OpenAI
+
+from millenniumdb_driver import driver
+from sentence_transformers import SentenceTransformer
+
 
 
 SPARSE_MODE = "sparse"
@@ -75,9 +80,7 @@ def retrieve_context(
     if mode == SPARSE_MODE:
         return retrieve_sparse(index, query, k=k)
 
-    from millenniumdb_driver import driver
-    from sentence_transformers import SentenceTransformer
-
+   
     print_step(3, "Cargando modelo de embeddings para recuperacion densa...")
     embedding_model = SentenceTransformer(MODEL)
     query_vector = get_embedding(embedding_model, query)
@@ -97,7 +100,7 @@ def retrieve_context(
 
 
 def generate_answer(query: str, context_documents: list[RetrievalResult]) -> str:
-    from openai import OpenAI
+   
 
     context_parts = []
     for result in context_documents:

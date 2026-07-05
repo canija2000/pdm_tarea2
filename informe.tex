@@ -1,0 +1,270 @@
+\documentclass{article}
+\usepackage{graphicx} % Required for inserting images
+\usepackage{verbatim}
+\usepackage{amsmath}
+\usepackage{listings}
+\usepackage[T1]{fontenc}
+\usepackage[scaled=0.92]{inconsolata}
+\usepackage{dirtree}
+\usepackage{mdframed}
+\usepackage{xcolor}
+\usepackage{tcolorbox}
+\usepackage{xcolor}
+\usepackage{hyperref}
+
+\definecolor{codebg}{HTML}{F8F8F5}
+\definecolor{coderule}{HTML}{D6D3CC}
+\definecolor{codecomment}{HTML}{6B7280}
+\definecolor{codekeyword}{HTML}{1F4E79}
+\definecolor{codestring}{HTML}{8B5CF6}
+
+\lstdefinestyle{bashstyle}{
+    language=Bash,
+    basicstyle=\ttfamily\small,
+    backgroundcolor=\color{codebg},
+    frame=single,
+    rulecolor=\color{coderule},
+    frameround=tttt,
+    framesep=6pt,
+    aboveskip=0.8em,
+    belowskip=0.8em,
+    showstringspaces=false,
+    columns=fullflexible,
+    breaklines=true,
+    breakatwhitespace=false,
+    tabsize=2,
+    keywordstyle=\color{codekeyword}\bfseries,
+    commentstyle=\color{codecomment},
+    stringstyle=\color{codestring},
+    numbers=left,
+    numberstyle=\tiny\color{codecomment},
+    numbersep=8pt,
+    xleftmargin=1.2em,
+    xrightmargin=0.4em,
+    keepspaces=true
+}
+
+\lstset{style=bashstyle}
+
+\newtcolorbox{treebox}{
+    colback=codebg,
+    colframe=coderule,
+    arc=2pt,
+    boxrule=0.6pt,
+    left=6pt,
+    right=6pt,
+    top=6pt,
+    bottom=6pt
+}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    urlcolor=blue,
+    citecolor=blue
+}
+
+\title{Tarea 2 IIC2440 }
+\author{Joaquín Bächler, Matias Morales}
+\date{June 2026}
+
+\begin{document}
+
+\maketitle
+
+Para abordar la tarea se decidió estructurar el trabajo como :
+\\
+
+\begin{treebox}
+\ttfamily\small
+\dirtree{%
+.1 T2/.
+.2 pregunta0.py.
+.2 pregunta1.py.
+.2 pregunta2.py.
+.2 pregunta3.py.
+.2 build\_sparse\_index.py.
+.2 sparse\_retriever.py.
+.2 schema.py.
+.2 output/.
+.3 sparse\_bm25\_index.pkl.
+}
+\end{treebox}
+
+\vspace{0.5cm}
+
+\hrule
+
+\section*{pregunta - 0}
+
+Se instala \textbf{MilleniumDB}, se pobla la base de datos y se prueba la conexión \texttt{puerto:1234}. Se crea el \textbf{HNSW index} para las consultas posteriores y se testea el correcto funcionamiento del motor. 
+
+\section*{pregunta - 1}
+
+Se definió el flujo del procedimiento para \texttt{RAG} como :
+
+
+
+\begin{mdframed}
+Query $\rightarrow$ embedding $\rightarrow$ \textcolor{orange}{búsqueda DB} $\rightarrow$ retriever $\rightarrow$ \textcolor{purple}{LLM} $\rightarrow$ output
+\end{mdframed}
+
+\subsection*{\textcolor{orange}{Búsqueda MDB}}
+
+Establecimos dos vías por las cuales realizar la búsqueda en \textbf{mdb}: 
+\begin{lstlisting}[language=Bash]
+python pregunta1.py "consulta" -t 0  # HNSW 
+python pregunta1.py "query" -t 1  # distancia coseno
+\end{lstlisting}
+
+
+\begin{enumerate}
+    \item La primera corresponde a el \texttt{HNSW} a partir del índice generado en la \textbf{parte 0}. Donde se fijó un $k = 5$ y consiste en obtener los chunks de información más cercanos a la query ingresada. 
+    \item La segunda corresponde a un proceso un poco más largo, que encuentra las \texttt{intervenciones} más cercanas a la query, y recupera cada \textbf{chunk} de esa intervención.
+\end{enumerate}
+
+Ambas funcionan bastante bien y similar. La diferencia es, en particular, para una búsqueda semántica que la primera opción no se ocupa todo el texto de la  intervención, por lo tanto el \texttt{LLM} no recive un exceso de información y responde con información más detallada/específica. Mientras que la segunda opción permite englobar la respuesta en un contexto más sólido.
+
+\subsection*{\textcolor{purple}{LLM}}
+
+\begin{table}[h]
+\centering
+\caption{Estructura del prompt enviado al modelo}
+\label{tab:prompt-estructura}
+\begin{tabular}{|l|p{10cm}|}
+\hline
+\textbf{Role} & \textbf{Content} \\
+\hline
+\texttt{system} & Eres un asistente experto en analizar intervenciones del poder legislativo chileno. Responde la siguiente pregunta basándote ÚNICAMENTE en el contexto proporcionado. Si el contexto no contiene la respuesta, di que no tienes suficiente información. Cita las intervenciones que uses. \\
+\hline
+\texttt{user} & [Contexto: fragmentos recuperados y separados por \texttt{---}] $+$[Pregunta del usuario]\\
+\hline
+\end{tabular}
+\end{table}
+
+Se fija además una \texttt{temperature = 0.0} que nos permite una reproducibilidad más fiable de nuestros experimentos.
+
+\section*{pregunta - 3}
+
+En esta parte se implementó el recuperador \textit{sparse} propio, independiente de la búsqueda densa de \textbf{MillenniumDB}. Como sabemos, la idea detrás de esta configuración nace de la necesidad de cubrir el tipo de consulta donde los embeddings densos suelen fallar: términos exactos, siglas, nombres propios, apellidos, etc .
+En particularconsultas sobre \texttt{CAE}, \texttt{FES} o \texttt{Ley Naín-Retamal} requieren que el sistema premie documentos donde esos términos aparecen de forma explícita, no solamente documentos semánticamente cercanos.
+
+\begin{mdframed}
+Query $\rightarrow$ búsqueda sparse BM25 $\rightarrow$ retriever $\rightarrow$ \textcolor{purple}{LLM} $\rightarrow$ output
+\end{mdframed}
+
+Además, se implementó una versión híbrida:
+
+\begin{mdframed}
+Query $\rightarrow$ \{búsqueda densa en MDB, búsqueda sparse BM25\} $\rightarrow$ fusión RRF $\rightarrow$ \textcolor{purple}{LLM} $\rightarrow$ output
+\end{mdframed}
+
+\subsection*{3.1}
+
+Se decidió ocupar el \textbf{BM25}. Con la asistencia de la IA, se entiende que esta estrategia suele ser el \textit{status quo}. Este sistema representa cada chunk a partir de los términos que aparecen en su texto, ponderando tanto la frecuencia local de cada término como su rareza global dentro de la colección: 
+
+\begin{mdframed}
+\texttt{chunk\_id} $\rightarrow$ \{\texttt{cae}: 3, \texttt{condonacion}: 1, \texttt{alimentos}: 2, ...\}
+\end{mdframed}
+
+Para cada término se calcula un valor global \texttt{IDF} (\textit{inverse document frequency}), que aumenta el peso de palabras poco frecuentes y disminuye el de palabras comunes [es decir, mide la rareza de la ocurrencia]. De esta manera, términos como \texttt{el}, \texttt{de} o \texttt{ley} aportan menos que términos más discriminativos como \texttt{CAE}, \texttt{FES} o \texttt{Piñera}.
+
+\begin{equation*}
+score(d, q) = \sum_{t \in q} IDF(t) \cdot
+\frac{f(t,d)(k_1 + 1)}
+{f(t,d) + k_1(1 - b + b \cdot \frac{|d|}{avgdl})}
+\end{equation*}
+
+Donde $f(t,d)$ es la frecuencia del término $t$ en el documento $d$, $|d|$ es el largo del documento y $avgdl$ es el largo promedio de los documentos. En la implementación se usaron los valores sugeridos $k_1 = 1.5$ y $b = 0.75$.
+
+\subsection*{construcción del índice}
+
+El índice sparse se construye en el archivo \texttt{build\_sparse\_index.py}. Para ello se consulta \textbf{MDB} y se extrae, para cada chunk [permitiendonos mantener el vínculo con esta]:
+
+\begin{enumerate}
+    \item El identificador del nodo \texttt{Embedding}, usado como \texttt{doc\_id}.
+    \item El identificador de la \texttt{Intervention} asociada, usado como \texttt{intervention\_id}.
+    \item El contenido textual del chunk, usado como \texttt{content}.
+\end{enumerate}
+
+Luego, cada registro se transforma en una estructura
+\href{https://github.com/canija2000/pdm_tarea2/blob/0532dcff704bc5bcff71e821918d4ba6a240acdf/sparse_retriever.py#L20}{\textcolor{blue}{\texttt{SparseRetriever}}}.
+
+\subsection*{3.2}
+
+Y para terminar guardamos el índice [como una estructura aparte de \textbf{mdb}] como:
+
+\begin{lstlisting}[language=Bash]
+output/sparse_bm25_index.pkl
+\end{lstlisting}
+
+Aquí, entonces, están, los documentos, sus frecuencias de términos, los pesos \texttt{IDF}, los largos de documentos y la información necesaria para ejecutar búsquedas BM25 sin recalcular el índice cada vez.
+
+Se decidió guardar el contenido textual junto al índice sparse, en vez de almacenar solamente los identificadores y volver a consultar \textbf{mDB} después de cada búsqueda, algunas razones son :
+
+\begin{enumerate}
+    \item la recuperación sparse queda autocontenida y puede ejecutarse rápidamente una vez construido el índice.
+    \item se evitan consultas repetidas a \textbf{mDB}  durante la evaluación de las nueve preguntas.
+    \item no se pierde la trazabilidad, porque cada chunk conserva su \texttt{doc\_id} y su \texttt{intervention\_id}.
+\end{enumerate}
+
+La principal desventaja es que se duplica el texto [data], por lo que si la base de datos cambia habría que reconstruir el índice, pero eso es generlmente lo que sucede cuando trabajamos sobre índices. 
+
+\subsection*{3.3}
+
+Al igual que en las preguntas anteriores tenemos un \texttt{.py} dedicado a la pregunta, y ejecutándolo se consigue lo siguiente: 
+
+\begin{lstlisting}[language=Bash]
+python pregunta3.py "consulta" --mode sparse --k 5
+\end{lstlisting}
+
+
+\begin{enumerate}
+    \item Se carga el índice \texttt{sparse\_bm25\_index.pkl}.
+    \item Se tokeniza la consulta, normalizando minúsculas y tildes.
+    \item Se calcula el score BM25 de cada chunk respecto a la consulta.
+    \item Se ordenan los chunks por score descendente.
+    \item Se entregan los top-$k$ chunks al mismo prompt de generación usado en la Parte 1.
+\end{enumerate}
+
+Esto permite evaluar el comportamiento de una recuperación puramente léxica. 
+
+\subsection*{3.4}
+
+Para combinar la recuperación densa y la sparse se implementó \textbf{Reciprocal Rank Fusion} (\texttt{RRF}), estrategia sugerida en el enunciado. Sabemos que los scores de ambos métodos no son directamente comparables: BM25 entrega un puntaje de coincidencia léxica, mientras que la búsqueda densa usa distancia coseno. En vez de sumar scores incompatibles, RRF combina las posiciones de los documentos en cada ranking.
+
+La fórmula usada es:
+
+\begin{equation*}
+RRF(d) = \sum_{r \in rankings} \frac{1}{k + rank_r(d)}
+\end{equation*}
+
+Donde $rank_r(d)$ es la posición del documento $d$ en el ranking $r$, y $k$ es una constante de suavizado. En nuestra implementación se usó $k = 60$, valor sugerido para evitar que diferencias pequeñas en los primeros lugares dominen excesivamente la fusión.
+
+El modo híbrido se ejecuta como:
+
+\begin{lstlisting}[language=Bash]
+python pregunta3.py "consulta" --mode hybrid --k 5
+\end{lstlisting}
+
+\begin{enumerate}
+    \item Se recuperan candidatos densos desde MillenniumDB usando HNSW.
+    \item Se recuperan candidatos sparse desde el índice BM25 local.
+    \item Se asigna a cada documento un puntaje RRF según su posición en ambos rankings.
+    \item Se ordenan los documentos por puntaje RRF.
+    \item Se entregan los top-$k$ documentos finales al LLM.
+\end{enumerate}
+
+Este mecanismo premia documentos que aparecen bien posicionados en ambas estrategias. Por ejemplo, si un chunk aparece alto en BM25 porque menciona literalmente \texttt{Naín-Retamal}, y además aparece alto en la búsqueda densa porque semánticamente habla sobre uso de fuerza policial, RRF tenderá a dejarlo en una posición alta del ranking final.
+
+Notemos, entonces, que la recuperación densa y la sparse son complementarias. La recuperación densa nos resulta útil cuando la pregunta y los documentos hablan del mismo tema usando palabras distintas; por ejemplo, \textit{conciliación entre vida familiar y trabajo} puede relacionarse semánticamente con intervenciones que hablan de \textit{tiempo en el hogar}, \textit{familia} o \textit{jornada laboral}. En cambio, la recuperación sparse es especialmente útil cuando la pregunta exige coincidencias explícitas, como siglas, nombres de leyes o términos técnicos.
+
+En resumen : 
+\begin{mdframed}
+\textbf{Denso:} recupera similitud semántica. \\
+\textbf{Sparse:} recupera coincidencia textual exacta. \\
+\textbf{RRF:} permite fusionar rankings sin comparar scores incompatibles.
+\end{mdframed}
+
+\section*{pregunta - 4}
+\end{document}
