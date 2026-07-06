@@ -80,10 +80,53 @@ LIMIT 1
 # LIMIT ?k
 # '''
 
-# Parametros (?intervention)
+# Parametros (?node)
 ALL_CHUNKS = '''
 LET ?i = ?node
 MATCH (?i)-[:HasEmbedding]->(?chunk :Embedding)
 ORDER BY ?chunk
 RETURN ?chunk, ?chunk.content as ?content
 '''
+
+# Parametros (?query_embedding, ?filtro)
+# Reemplazos (?n, ?k)
+FROM_A_POLITICAL_PARTY = """
+LET ?q = ?query_embedding
+LET ?party_name = ?filtro
+CALL HNSW_TOP_K("mi_indice", ?q, ?n, 1000)
+YIELD ?object AS ?c, ?distance
+MATCH (?i :Intervention)-[:HasEmbedding]->(?c)
+MATCH (?i)-[:DeliveredBy]->(?pos :Position)-[:Represents]->(?party :PoliticalParty)
+WHERE ?party.name == ?party_name
+ORDER BY ?distance
+RETURN ?c, ?c.content AS ?content, ?party_name, ?distance
+LIMIT ?k
+"""
+
+# Parametros (?query_embedding)
+# Reemplazos (?n, ?k)
+GENDER_AGG = """
+LET ?q = ?query_embedding
+CALL HNSW_TOP_K("mi_indice", ?q, ?n, 1000)
+YIELD ?object AS ?c, ?distance
+MATCH (?i :Intervention)-[:HasEmbedding]->(?c)
+MATCH (?p :Person)-[:ServedAs]->(?pos :Position)<-[:DeliveredBy]-(?i)
+ORDER BY ?gender, ?distance
+RETURN ?c, ?c.content AS ?content, ?p.gender AS ?gender, ?distance
+LIMIT ?k
+"""
+
+# Parametros (?query_embedding, ?filtro)
+# Reemplazos (?n, ?k)
+FILTER_MIN_DATE = """
+LET ?q = ?query_embedding
+LET ?min_date = ?filtro
+CALL HNSW_TOP_K("mi_indice", ?q, ?n, 1000)
+YIELD ?object AS ?c, ?distance
+MATCH (?i :Intervention)-[:HasEmbedding]->(?c)
+MATCH (?i)-[:HasIntervention]->(?proc :Procedure)-[:OCCURRED_IN]->(?s :Session)
+WHERE ?s.date > DATE(?min_date)
+ORDER BY ?distance
+RETURN ?c, ?c.content AS ?content, ?s.date AS ?date, ?distance
+LIMIT ?k
+"""
