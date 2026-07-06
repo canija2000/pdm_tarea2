@@ -1,19 +1,23 @@
-import argparse
-import os
-import csv
-import uuid
-import queries as q
-from config import URL, MODEL, K, SYSTEM_PROMPT
+from config import URL, INDEX_NAME, K, MODEL, SYSTEM_PROMPT
 from utils import q_run, get_embedding
 from color_print import Colors, print_header, print_step, print_success, print_error, print_info
+import queries as q
+
+import os
+import argparse
+from dotenv import load_dotenv
+import uuid
 from datetime import datetime
+import csv
+
 from millenniumdb_driver import driver
 from sentence_transformers import SentenceTransformer
 from openai import OpenAI
-from dotenv import load_dotenv
 
 
-HNSW_INDEX_NAME = "hnsw_vectors"
+
+### Parametros
+
 # Frente 1: Restricción tipada (ej: Solo intervenciones de un partido específico)
 RESTR_TIPADA = 1
  # Frente 2: Agregación / Contraste (ej: Recuperamos el género de la persona para contrastar)
@@ -21,18 +25,30 @@ AGREGACION = 2
 # Frente 3: Filtro numérico o temporal (ej: Intervenciones de sesiones posteriores a una fecha)
 # HNSW trae candidatos por similitud; luego el MATCH conserva solo los que cumplen el patron temporal.
 FILTRO_TEMP = 3
+
 # Candidatos por intervencion recuperada
 N_PER_INTERVENTION = 200
 # Limite estricto de total de candidatos
 HARD_LIMIT = 10000
 
+# path para registrar ejecuciones
 CSV_LOG_FILE = "output/evaluacion_resultados.csv"
+
+
+
+### Cliente OpenAI
 
 # Cargar variables de entorno desde .env
 load_dotenv()
-# gtp-key 
+
+# gtp-client (leer api key en .env)
 openai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
+
+
+### Funciones Auxiliares
+
+# Recuperar top-k intervenciones
 def retrieve_k_interventions_graphrag(
         session,
         query_vector: list[float], 
@@ -78,7 +94,13 @@ def retrieve_k_interventions_graphrag(
         
     return interventions
 
-def generate_answer(query: str, patron: int, context_documents: list[tuple[str, float, str, str]]) -> str:
+
+# Generar respuesta con GPT
+def generate_answer(
+        query: str, 
+        patron: int, 
+        context_documents: list[tuple[str, float, str, str]]
+) -> tuple[str, str, str]:
     # Formatear el contexto para que incluya la metadata (género, partido, fecha) dependiendo del patrón
     textos = []
     for doc_id, dist, metadata, doc in context_documents:
@@ -119,9 +141,10 @@ def generate_answer(query: str, patron: int, context_documents: list[tuple[str, 
         ],
         temperature=0.0
     )
-    return response.choices[0].message.content
+    return response.choices[0].message.content, system_prompt, prompt
 
 
+# Guardar log con resultados de ejecucion
 def save_log(k_interventions, query, k, answer, strategy, csv_file = CSV_LOG_FILE):
     file_exists = os.path.isfile(csv_file)
     with open(csv_file, mode='a', newline='', encoding='utf-8') as f:
@@ -143,7 +166,14 @@ def save_log(k_interventions, query, k, answer, strategy, csv_file = CSV_LOG_FIL
             answer
         ])
 
+
+
 def main():
+    # formato esperado de ejecucion: 
+    # python pregunta1.py "pregunta a responder" -k --patron --filtro
+    # -k: numero de documentos a recuperar
+    # -patron: tipo de patron busqueda para hacer match en el grafo (1: Restriccion tipada, 2: Agregacion/comparacion, 3: Por atributo numerico/temporal)
+    # --filtro: filtro en funcion del tipo de patron
     parser = argparse.ArgumentParser(description="Flujo de GraphRAG (Parte 2)")
     parser.add_argument("query", type=str, help="Pregunta a responder")
     parser.add_argument("-k", type=int, default=K, help="Número de documentos a recuperar")
@@ -157,6 +187,8 @@ def main():
     print_info(f"Filtro: {args.filtro}")
     print_info(f"K: {args.k}")
 
+
+    ### modelo de embedding
     print_step(1, "Cargando modelo de embedding...")
     try:
         embedding_model = SentenceTransformer(MODEL)
@@ -164,6 +196,8 @@ def main():
     except Exception as e:
         print_error("Error al cargar el modelo de embedding: {e}")
 
+
+    ### vectorizar query usuario
     print_step(2, f"Vectorizando la pregunta: '{args.query}'")
     try:
         query_vector = get_embedding(embedding_model, args.query)
@@ -171,6 +205,8 @@ def main():
     except Exception as e:
         print_error(f"Error al vectorizar la pregunta: {e}")
 
+
+    ### conectarse a MDB
     print_step(3, f"Conectando a MillenniumDB en {URL}...")
     try:
         db = driver(URL)
@@ -179,6 +215,8 @@ def main():
         print_error(f"No se pudo conectar: {e}")
         return
     
+
+    ### recuperar top-k intervenciones
     print_step(4, f"Recuperando las top-{args.k} intervenciones de MillenniumDB...")
     try:
         session = db.session()
@@ -192,17 +230,22 @@ def main():
         print_error(f"Error al recuperar intervenciones: {e}")
         return
     
-    # Cerrar conexion
+
+    # cerrar conexion
     print_step(5, "Cerrando conexión...")
     db.close()
     print_success("Conexión cerrada")
 
+
+    ### generar respuesta con GPT
     print_step(6, "Generando respuesta analítica con GPT-4o-mini...")
     try:
-        answer = generate_answer(args.query, args.patron, k_interventions)
+        answer, system_prompt, user_prompt = generate_answer(args.query, args.patron, k_interventions)
         print_success("Respuesta generada con éxito")
         print("="*10)
-        print_success(f"Prompt sistema: {Colors.BOLD}{SYSTEM_PROMPT}{Colors.END}")
+        print_success(f"Prompt sistema: {Colors.BOLD}{system_prompt}{Colors.END}")
+        print("="*10)
+        print_success(f"Prompt usuario: {Colors.BOLD}{user_prompt}{Colors.END}")
         print("="*10)
         print_success(f"Respuesta GPT: {Colors.BOLD}{answer}{Colors.END}")
         print("="*10)
@@ -210,7 +253,7 @@ def main():
         print_error(f"Error al generar respuesta: {e}")
         return
     
-    # Guardar en CSV para evaluación posterior
+    # guardar en CSV para evaluación posterior
     print_step(7, f"Guardando resultados de la ejecución en {CSV_LOG_FILE}")
     try:
         strategy = f"GraphRAG_Patron[{args.patron}]"
@@ -227,7 +270,10 @@ def main():
         print_error(f"Error al escribir resultados: {e}")
         return
 
+
     print_header("PROCESO COMPLETADO EXITOSAMENTE")
+
+    return 0
 
 
 if __name__ == "__main__":

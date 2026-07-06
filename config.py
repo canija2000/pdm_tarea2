@@ -10,9 +10,6 @@ K = 5
 # EMBEDDING MODEL
 MODEL = 'intfloat/multilingual-e5-base'
 
-# API KEY
-API_KEY = 'api-key'
-
 # PROMPT DE SISTEMA
 SYSTEM_PROMPT = """
 Eres un asistente experto en analizar intervenciones del poder legislativo chileno.

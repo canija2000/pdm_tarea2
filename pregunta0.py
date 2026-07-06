@@ -1,13 +1,16 @@
 from config import URL
-from color_print import Colors, print_header, print_step, print_success, print_error, print_info
 from utils import q_run
+from color_print import Colors, print_header, print_step, print_success, print_error, print_info
 import queries as q
+
 from millenniumdb_driver import driver
+
 
 def main():
     print_header("INICIALIZANDO BASE DE DATOS")
 
-    # conectarse a la mdb
+
+    ### conectarse a la mdb
     print_step(1, f"Conectando a MillenniumDB en {URL}...")
     try:
         db = driver(URL)
@@ -16,7 +19,8 @@ def main():
         print_error(f"No se pudo conectar: {e}")
         return
     
-    # crear indice hnsw
+
+    ### crear indice hnsw
     print_step(2, "Creando índice HNSW...")
     try:
         session = db.session()
@@ -30,7 +34,8 @@ def main():
         else:
             print_error(f"Error al crear índice: {error_msg}")
     
-    # testeamos con una query simple. 
+
+    ### testeamos con una query simple
     print_step(3, f"Ejecutando consulta simple: {q.ALL_COUNT}")
     try:
         session = db.session()
@@ -40,7 +45,8 @@ def main():
     except Exception as e:
         print_error(f"Error al ejecutar: {e}")
 
-    # Contar nodos
+
+    ### contar nodos
     print_step(4, "Contando nodos en la base de datos...")
     try:
         session = db.session()
@@ -51,7 +57,8 @@ def main():
     except Exception as e:
         print_error(f"Error al contar nodos: {e}")
 
-    # Contar aristas
+
+    ### contar aristas
     print_step(5, "Contando aristas en la base de datos...")
     try:
         session = db.session()
@@ -62,7 +69,8 @@ def main():
     except Exception as e:
         print_error(f"Error al contar aristas: {e}")
 
-    # Contar embeddings
+
+    ### contar embeddings
     print_step(6, "Contando embeddings en la base de datos...")
     try:
         session = db.session()
@@ -73,10 +81,12 @@ def main():
     except Exception as e:
         print_error(f"Error al contar embeddings: {e}")
 
-    # Cerrar conexion
+
+    ### cerrar conexion
     print_step(7, "Cerrando conexión...")
     db.close()
     print_success("Conexión cerrada")
+
 
     print_header("PROCESO COMPLETADO EXITOSAMENTE")
     

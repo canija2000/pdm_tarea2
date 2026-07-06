@@ -137,7 +137,7 @@ CALL HNSW_TOP_K("{INDEX_NAME}", ?q, ?n, 1000)
 YIELD ?object AS ?c, ?distance
 MATCH (?i :Intervention)-[:HasEmbedding]->(?c)
 MATCH (?i)-[:HasIntervention]->(?proc :Procedure)-[:OCCURRED_IN]->(?s :Session)
-WHERE ?s.date > DATE(?min_date)
+WHERE ?s.date > ?min_date
 ORDER BY ?distance
 RETURN ?c, ?c.content AS ?content, ?s.date AS ?date, ?distance
 LIMIT ?k

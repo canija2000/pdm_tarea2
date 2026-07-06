@@ -37,6 +37,7 @@ def q_run(
 
     return session.run(query, parameters, timeout)
 
+# Obtener embedding de una query
 def get_embedding(embedding_model, text: str) -> list[float]:
     prefixed_text = f"query: {text}"
     embedding = embedding_model.encode(prefixed_text, normalize_embeddings=True, convert_to_numpy=True)

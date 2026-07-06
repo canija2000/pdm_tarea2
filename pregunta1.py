@@ -1,27 +1,45 @@
-from config import URL, MODEL, K, SYSTEM_PROMPT
-from color_print import Colors, print_header, print_step, print_success, print_error, print_info
+from config import URL, K, MODEL, SYSTEM_PROMPT
 from utils import q_run, get_embedding
+from color_print import Colors, print_header, print_step, print_success, print_error, print_info
 import queries as q
+
+import os
+import argparse
+from dotenv import load_dotenv
+import uuid
+from datetime import datetime
+import csv
+
 from millenniumdb_driver import driver
 from sentence_transformers import SentenceTransformer
 from openai import OpenAI
-import argparse
-import os
-import csv
-import uuid
-from datetime import datetime
-from dotenv import load_dotenv
 
+
+
+### Parametros
+
+# tipo de busqueda (hnsw y fuerza bruta)
 HNSW_SEARCH = 0
 DENSE_SEARCH = 1
 
+# path para registrar ejecuciones
 CSV_LOG_FILE = "output/evaluacion_resultados.csv"
 
-# Cargar variables de entorno desde .env
+
+
+### Cliente OpenAI
+
+# cargar variables de entorno desde .env
 load_dotenv()
-# gtp-key 
+
+# cliente gpt (leer api key en .env)
 openai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
+
+
+### Funciones auxiliares
+
+# Recuperar texto de todos chunks de una intervencion
 def get_chunks_content(session, intervention) -> str:
     chunk_list = []
     result = q_run(session, q.ALL_CHUNKS, parameters={"node": intervention})
@@ -33,6 +51,7 @@ def get_chunks_content(session, intervention) -> str:
     return "".join(chunk_list)
 
 
+# Recuperar top-k intervenciones
 def retrieve_k_interventions(
         session, 
         query_vector: list[float], 
@@ -64,7 +83,11 @@ def retrieve_k_interventions(
     return interventions
 
 
-def generate_answer(query: str, context_documents: list[tuple[str, float, str]]) -> str:
+# Generar respuesta con GPT
+def generate_answer(
+        query: str, 
+        context_documents: list[tuple[str, float, str]]
+) -> tuple[str, str, str]:
     # Crear el prompt con el contexto
     textos  = [f"ID Documento [{doc_id}]\n" + doc_text for doc_id, _, doc_text in context_documents]
     context_text = "\n\n---\n\n".join(textos)
@@ -85,9 +108,10 @@ def generate_answer(query: str, context_documents: list[tuple[str, float, str]])
         temperature=0.0
     )
 
-    return response.choices[0].message.content
+    return response.choices[0].message.content, SYSTEM_PROMPT, prompt
 
 
+# Guardar log con resultados de ejecucion
 def save_log(k_interventions, query, k, answer, strategy, csv_file = CSV_LOG_FILE):
     file_exists = os.path.isfile(csv_file)
     with open(csv_file, mode='a', newline='', encoding='utf-8') as f:
@@ -110,9 +134,13 @@ def save_log(k_interventions, query, k, answer, strategy, csv_file = CSV_LOG_FIL
         ])
 
 
+
 def main():
-    # formato esperado de ejecucion : 
-    # python pregunta1.py "pregunta a responder" --k [numero maximo de documentos a recuperar]
+    # formato esperado de ejecucion: 
+    # python pregunta1.py "pregunta a responder" -k --t --all
+    # -k: numero de documentos a recuperar
+    # --t: tipo de busqueda (0: HNSW, 1: DENSE o fuerza bruta)
+    # --all: recuperar todos los chunks de cada intervencion (0: NO, 1: SI)
     parser = argparse.ArgumentParser(description="Flujo de RAG Denso (Parte 1)")
     parser.add_argument("query", type=str, help="Pregunta a responder")
     parser.add_argument("-k", type=int, default=K, help="Número de documentos a recuperar")
@@ -122,10 +150,12 @@ def main():
 
     print_header("BUSQUEDA SEMÁNTICA TOP-K INTERVENCIONES")
     print_info(f"Query: '{args.query}'")
-    print_info(f"Tipo de búsqueda: {"HNSW" if args.t == HNSW_SEARCH else "Densa"}")
+    print_info(f"Tipo de búsqueda: {"HNSW" if args.t == HNSW_SEARCH else "Fuerza Bruta"}")
     print_info(f"K: {args.k}")
     print_info(f"Reconstruir intervenciones recuperando chunks: {"SI" if args.all else "NO"}")
 
+
+    ### modelo de embedding
     print_step(1, "Cargando modelo de embedding...")
     try:
         embedding_model = SentenceTransformer(MODEL)
@@ -133,6 +163,8 @@ def main():
     except Exception as e:
         print_error("Error al cargar el modelo de embedding: {e}")
 
+
+    ### vectorizar query usuario
     print_step(2, f"Vectorizando la pregunta: '{args.query}'")
     try:
         query_vector = get_embedding(embedding_model, args.query)
@@ -140,6 +172,8 @@ def main():
     except Exception as e:
         print_error(f"Error al vectorizar la pregunta: {e}")
 
+
+    ### conectarse a MDB
     print_step(3, f"Conectando a MillenniumDB en {URL}...")
     try:
         db = driver(URL)
@@ -148,6 +182,8 @@ def main():
         print_error(f"No se pudo conectar: {e}")
         return
 
+
+    ### recuperar top-k intervenciones
     print_step(4, f"Recuperando las top-{args.k} intervenciones de MillenniumDB...")
     try:
         session = db.session()
@@ -161,17 +197,22 @@ def main():
         print_error(f"Error al recuperar intervenciones: {e}")
         return
     
-    # Cerrar conexion
+
+    ### cerrar conexion
     print_step(5, "Cerrando conexión...")
     db.close()
     print_success("Conexión cerrada")
 
+
+    ### generar respuesta con GPT
     print_step(6, "Generando respuesta con GPT-4o-mini...")
     try:
-        answer = generate_answer(args.query, k_interventions)
+        answer, system_prompt, user_prompt = generate_answer(args.query, k_interventions)
         print_success("Respuesta generada con éxito")
         print("="*10)
-        print_success(f"Prompt sistema: {Colors.BOLD}{SYSTEM_PROMPT}{Colors.END}")
+        print_success(f"Prompt sistema: {Colors.BOLD}{system_prompt}{Colors.END}")
+        print("="*10)
+        print_success(f"Prompt usuario: {Colors.BOLD}{user_prompt}{Colors.END}")
         print("="*10)
         print_success(f"Respuesta GPT: {Colors.BOLD}{answer}{Colors.END}")
         print("="*10)
@@ -179,7 +220,7 @@ def main():
         print_error(f"Error al generar respuesta: {e}")
         return
 
-    # Guardar en CSV para evaluación posterior
+    # guardar en CSV para evaluación posterior
     print_step(7, f"Guardando resultados de la ejecución en {CSV_LOG_FILE}")
     try:
         strategy = "RAG_HNSW" if args.t == HNSW_SEARCH else "RAG_DENSO"
@@ -196,9 +237,11 @@ def main():
         print_error(f"Error al escribir resultados: {e}")
         return
 
+
     print_header("PROCESO COMPLETADO EXITOSAMENTE")
 
     return 0
+
 
 if __name__ == "__main__":
     main()
