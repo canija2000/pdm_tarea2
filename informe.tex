@@ -1,4 +1,5 @@
 \documentclass{article}
+\usepackage[a4paper,margin=2.5cm]{geometry}
 \usepackage{graphicx} % Required for inserting images
 \usepackage{verbatim}
 \usepackage{amsmath}
@@ -7,16 +8,23 @@
 \usepackage[scaled=0.92]{inconsolata}
 \usepackage{dirtree}
 \usepackage{mdframed}
+\usepackage{booktabs}
 \usepackage{xcolor}
 \usepackage{tcolorbox}
 \usepackage{xcolor}
 \usepackage{hyperref}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.5em}
+\renewcommand{\arraystretch}{1.15}
 
 \definecolor{codebg}{HTML}{F8F8F5}
 \definecolor{coderule}{HTML}{D6D3CC}
 \definecolor{codecomment}{HTML}{6B7280}
 \definecolor{codekeyword}{HTML}{1F4E79}
 \definecolor{codestring}{HTML}{8B5CF6}
+\definecolor{boxbg}{HTML}{FBFBFA}
+\definecolor{boxrule}{HTML}{CFCBC2}
 
 \lstdefinestyle{bashstyle}{
     language=Bash,
@@ -47,14 +55,27 @@
 \lstset{style=bashstyle}
 
 \newtcolorbox{treebox}{
-    colback=codebg,
-    colframe=coderule,
-    arc=2pt,
-    boxrule=0.6pt,
-    left=6pt,
-    right=6pt,
-    top=6pt,
-    bottom=6pt
+    colback=boxbg,
+    colframe=boxrule,
+    arc=4pt,
+    boxrule=0.8pt,
+    left=8pt,
+    right=8pt,
+    top=8pt,
+    bottom=8pt
+}
+
+\mdfdefinestyle{simplebox}{
+    linecolor=boxrule,
+    backgroundcolor=boxbg,
+    roundcorner=4pt,
+    linewidth=0.8pt,
+    innertopmargin=8pt,
+    innerbottommargin=8pt,
+    innerleftmargin=8pt,
+    innerrightmargin=8pt,
+    skipabove=0.8em,
+    skipbelow=0.8em
 }
 
 \hypersetup{
@@ -66,7 +87,7 @@
 
 \title{Tarea 2 IIC2440 }
 \author{Joaquín Bächler, Matias Morales}
-\date{June 2026}
+\date{6 de Julio de 2026}
 
 \begin{document}
 
@@ -97,67 +118,176 @@ Para abordar la tarea se decidió estructurar el trabajo como :
 
 \hrule
 
+\newpage
 \section*{pregunta - 0}
 
 Se instala \textbf{MilleniumDB}, se pobla la base de datos y se prueba la conexión \texttt{puerto:1234}. Se crea el \textbf{HNSW index} para las consultas posteriores y se testea el correcto funcionamiento del motor. 
 
+\newpage
 \section*{pregunta - 1}
 
-Se definió el flujo del procedimiento para \texttt{RAG} como :
+Se definió el flujo del procedimiento para \texttt{RAG} como:
 
-
-
-\begin{mdframed}
-Query $\rightarrow$ embedding $\rightarrow$ \textcolor{orange}{búsqueda DB} $\rightarrow$ retriever $\rightarrow$ \textcolor{purple}{LLM} $\rightarrow$ output
+\begin{mdframed}[style=simplebox]
+query $\rightarrow$ embedding $\rightarrow$ \textcolor{orange}{búsqueda DB} $\rightarrow$ retriever $\rightarrow$ \textcolor{purple}{LLM} $\rightarrow$ output
 \end{mdframed}
+
+La query del usuario se vectoriza transformándola en un \texttt{embedding}. Luego se recuperan las top-k intervenciones con una búsqueda HNSW o mediante fuerza bruta (recorrer todas las intervenciones exhaustivamente), dentro de MDB.
+
+Las intervenciones se utilizan como contexto para el LLM, pasando el texto del chunk encontrado junto al ID.
 
 \subsection*{\textcolor{orange}{Búsqueda MDB}}
 
-Establecimos dos vías por las cuales realizar la búsqueda en \textbf{mdb}: 
+El formato de ejecución es el siguiente: 
 \begin{lstlisting}[language=Bash]
-python pregunta1.py "consulta" -t 0  # HNSW 
-python pregunta1.py "query" -t 1  # distancia coseno
+python pregunta1.py QUERY -k K --t TIPO BUSQUEDA --all RECUPERAR CHUNKS
 \end{lstlisting}
 
 
 \begin{enumerate}
-    \item La primera corresponde a el \texttt{HNSW} a partir del índice generado en la \textbf{parte 0}. Donde se fijó un $k = 5$ y consiste en obtener los chunks de información más cercanos a la query ingresada. 
-    \item La segunda corresponde a un proceso un poco más largo, que encuentra las \texttt{intervenciones} más cercanas a la query, y recupera cada \textbf{chunk} de esa intervención.
+    \item K es el número de intervenciones a recuperar. Por defecto K = 5.
+    \item TIPO BUSQUEDA es el mecanismo para buscar intervenciones. El valor es 0 para usar el índice HNSW y 1 para usar fuerza bruta (recorrer todas las intervenciones). Por defecto TIPO BUSQUEDA = 0.
+    \item RECUPERAR CHUNKS indica si se desea reconstruir las intervenciones halladas recuperando todos los chunks de cada una. El valor es 0 para quedarse solo con un solo chunk de cada intervención y 1 para quedarse con todos. Por defecto RECUPERAR CHUNKS = 0.
 \end{enumerate}
 
-Ambas funcionan bastante bien y similar. La diferencia es, en particular, para una búsqueda semántica que la primera opción no se ocupa todo el texto de la  intervención, por lo tanto el \texttt{LLM} no recive un exceso de información y responde con información más detallada/específica. Mientras que la segunda opción permite englobar la respuesta en un contexto más sólido.
+Una búsqueda usando el índice HNSW permite hallar las K intervenciones más rápido que una búsqueda por fuerza bruta, ya que la primera hace uso de la estructura interna de índices en MDB.
+
+Al recuperar todos los chunks en cada intervención se obtiene el texto completo de cada intervención, mientras que sin usar recuperación de chunks nos quedamos solo con el chunk más cercano al vector de la query. 
+Ambas formas funcionan bastante bien y similar. La diferencia es, en particular para una búsqueda semántica, que la segunda opción no se ocupa todo el texto de la intervención, por lo que el \texttt{LLM} no recive un exceso de información y responde con información más detallada/específica. 
+Aunque por otro lado la primera opción permite englobar la respuesta en un contexto más sólido.
 
 \subsection*{\textcolor{purple}{LLM}}
+
+Los prompt de sistema y usuario entregados al LLM siguen el formato de la tabla \ref{tab:p1_prompts}.
 
 \begin{table}[h]
 \centering
 \caption{Estructura del prompt enviado al modelo}
-\label{tab:prompt-estructura}
-\begin{tabular}{|l|p{10cm}|}
-\hline
+\label{tab:p1_prompts}
+\begin{tabular}{@{}l p{10cm}@{}}
+\toprule
 \textbf{Role} & \textbf{Content} \\
-\hline
-\texttt{system} & Eres un asistente experto en analizar intervenciones del poder legislativo chileno. Responde la siguiente pregunta basándote ÚNICAMENTE en el contexto proporcionado. Si el contexto no contiene la respuesta, di que no tienes suficiente información. Cita las intervenciones que uses. \\
-\hline
-\texttt{user} & [Contexto: fragmentos recuperados y separados por \texttt{---}] $+$[Pregunta del usuario]\\
-\hline
+\midrule
+\texttt{system} & Eres un asistente experto en analizar intervenciones del poder legislativo chileno.
+Responde la siguiente pregunta basándote ÚNICAMENTE en el contexto proporcionado.
+Si el contexto no contiene la respuesta, di que no tienes suficiente información.
+Cita las intervenciones que uses. \\
+\texttt{user} & [Contexto: fragmentos de texto recuperados junto a los ID de las intervenciones, usando el símbolo \texttt{---} como separador] $+$ [Pregunta: query del usuario]\\
+\bottomrule
 \end{tabular}
 \end{table}
 
 Se fija además una \texttt{temperature = 0.0} que nos permite una reproducibilidad más fiable de nuestros experimentos.
 
+\newpage
+\section*{pregunta - 2}
+
+Se definió el flujo del procedimiento para \texttt{GraphRAG} como:
+
+\begin{mdframed}[style=simplebox]
+pattern $\rightarrow$ query $\rightarrow$ embedding $\rightarrow$ \textcolor{orange}{búsqueda DB} $\rightarrow$ retriever $\rightarrow$ \textcolor{purple}{LLM} $\rightarrow$ output
+\end{mdframed}
+
+Se utiliza un patrón común \texttt{pattern} para construir queries específicas. El patrón común en MQL es el siguiente.
+
+\begin{lstlisting}[language=Bash]
+// PARAMETROS
+//  ?query_embedding: query vectorizada
+//  ?n: numero de chunks candidatos
+//  ?filtro: filtro utilizado sobre el patron de grafo
+
+LET ?q = ?query_embedding
+LET ?f = ?filtro
+
+// hallar chunks con indice hnsw
+CALL HNSW_TOP_K("nombre_indice_hnsw", ?q, ?n, 1000)
+YIELD ?object AS ?c, ?distance
+// hacer match con las intervenciones
+MATCH (?i :Intervention)-[:HasEmbedding]->(?c)
+
+// hacer match del patron deseado
+MATCH (?i)-...->(?x :Label)
+// utilizar filtros sobre el patron
+WHERE ... ?filtro ...
+
+// ordenar por distancia
+ORDER BY ?distance
+
+// retornar con limite k
+RETURN ?c, ?distance, ..., ?c.content
+LIMIT ?k
+\end{lstlisting}
+
+En base a este \texttt{pattern} se crearon 3 queries MQL distintas.
+
+\begin{itemize}
+    \item Restricción tipada: Que recupera intervenciones sobre el tema descrito en la query del usuario usando como filtro el nombre de un partido político específico.
+    \item Agregación/contraste: Que recupera intervenciones sobre el tema descrito en la query del usuario junto al género del interlocutor de cada intervención.
+    \item Por atributo numérico/temporal: Que recupera intervenciones sobre el tema descrito en la query del usuario, filtrando las ocurrencias por una fecha mínima específica.
+\end{itemize}
+
+La query del usuario se vectoriza transformándola en un \texttt{embedding}. Luego es usada como parámetro en alguna de las queries MQL anteriores para recuperar las top-k intervenciones con una búsqueda HNSW en MDB.
+
+Las intervenciones se utilizan como contexto para el LLM, pasando el texto del chunk encontrado junto al ID y la metadata correspondiente según la query MQL utilizada (partido político, género o fecha).
+
+\subsection*{\textcolor{orange}{Búsqueda MDB}}
+
+El formato de ejecución es el siguiente: 
+\begin{lstlisting}[language=Bash]
+python pregunta2.py QUERY -k K --patron PATRON --filtro FILTRO
+\end{lstlisting}
+
+\begin{enumerate}
+    \item K es el número de intervenciones a recuperar. Por defecto K = 5.
+    \item PATRON es el tipo de patrón a utilizar en la búsqueda. El valor es 0 para recuperación con restricción tipada, 1 para agregación/contraste, y 2 para consulta con atributo numérico/temporal. No tiene valor por defecto y es requerido.
+    \item FILTRO es el valor del parámetro utilizado para filtrar según el tipo de patrón. En este caso, para restricción tipada es el nombre de un partido político, en agregación/contraste no se necesita, y en consultas con atributo numérico/temporal es una fecha en formato \texttt{yyyy-mm-dd}. Por defecto FILTRO = "2020-01-01".
+\end{enumerate}
+
+
+\subsection*{\textcolor{purple}{LLM}}
+
+Los prompt de sistema y usuario entregados al LLM siguen el formato de la tabla \ref{tab:p2_prompts}.
+
+\begin{table}[h]
+\centering
+\caption{Estructura del prompt enviado al modelo}
+\label{tab:p2_prompts}
+\begin{tabular}{@{}l p{10cm}@{}}
+\toprule
+\textbf{Role} & \textbf{Content} \\
+\midrule
+\texttt{system} & Eres un asistente experto en analizar intervenciones del poder legislativo chileno.
+Responde la siguiente pregunta basándote ÚNICAMENTE en el contexto proporcionado.
+Si el contexto no contiene la respuesta, di que no tienes suficiente información.
+Cita las intervenciones que uses. $+$ [Instrucción extra según el tipo de patrón utilizado] \\
+\texttt{user} & [Contexto: fragmentos de texto recuperados junto a los ID de las intervenciones, usando el símbolo \texttt{---} como separador] $+$ [Pregunta: query del usuario]\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+La instrucción extra varía según el patrón de búsqueda. Las 3 posibilidades se listan a continuación.
+
+\begin{itemize}
+    \item Restricción tipada: Tu respuesta debe resumir lo que opina el partido político señalado al inicio de cada fragmento de texto.
+    \item Agregación/contraste: Tu respuesta debe CONTRASTAR claramente las distintas posturas encontradas en el contexto basándote en el género del interlocutor señalado al inicio de cada fragmento de texto.
+    \item Tu respuesta debe tomar en consideración la fecha asociada a cada intervención para ver cómo ha evolucionado el tema.
+\end{itemize}
+
+Se fija además una \texttt{temperature = 0.0} que nos permite una reproducibilidad más fiable de nuestros experimentos.
+
+\newpage
 \section*{pregunta - 3}
 
 En esta parte se implementó el recuperador \textit{sparse} propio, independiente de la búsqueda densa de \textbf{MillenniumDB}. Como sabemos, la idea detrás de esta configuración nace de la necesidad de cubrir el tipo de consulta donde los embeddings densos suelen fallar: términos exactos, siglas, nombres propios, apellidos, etc .
 En particularconsultas sobre \texttt{CAE}, \texttt{FES} o \texttt{Ley Naín-Retamal} requieren que el sistema premie documentos donde esos términos aparecen de forma explícita, no solamente documentos semánticamente cercanos.
 
-\begin{mdframed}
+\begin{mdframed}[style=simplebox]
 Query $\rightarrow$ búsqueda sparse BM25 $\rightarrow$ retriever $\rightarrow$ \textcolor{purple}{LLM} $\rightarrow$ output
 \end{mdframed}
 
 Además, se implementó una versión híbrida:
 
-\begin{mdframed}
+\begin{mdframed}[style=simplebox]
 Query $\rightarrow$ \{búsqueda densa en MDB, búsqueda sparse BM25\} $\rightarrow$ fusión RRF $\rightarrow$ \textcolor{purple}{LLM} $\rightarrow$ output
 \end{mdframed}
 
@@ -268,6 +398,7 @@ En resumen :
 \textbf{RRF:} permite fusionar rankings sin comparar scores incompatibles.
 \end{mdframed}
 
+\newpage
 \section*{pregunta - 4}
 Se consolidaron las evaluaciones manuales disponibles en una tabla resumen por método y pregunta. Se dejan vacías las celdas donde todavía no hay agregación disponible.
 

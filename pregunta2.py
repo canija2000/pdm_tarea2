@@ -92,11 +92,11 @@ def generate_answer(query: str, patron: int, context_documents: list[tuple[str, 
 
     # Personalizar el prompt según el objetivo
     if patron == RESTR_TIPADA:
-        instruccion_extra = "Tu respuesta debe resumir lo que opinan basado ÚNICAMENTE en las intervenciones entregadas."
+        instruccion_extra = "Tu respuesta debe resumir lo que opina el partido político señalado al inicio de cada fragmento de texto."
     elif patron == AGREGACION:
-        instruccion_extra = "Tu respuesta debe CONTRASTAR claramente las distintas posturas encontradas en el contexto basándote en el atributo proporcionado (por ejemplo, hombres vs mujeres, partido A vs partido B)."
+        instruccion_extra = "Tu respuesta debe CONTRASTAR claramente las distintas posturas encontradas en el contexto basándote en el género del interlocutor señalado al inicio de cada fragmento de texto."
     elif patron == FILTRO_TEMP:
-        instruccion_extra = "Tu respuesta debe tomar en consideración la fecha o atributo numérico asociado a cada intervención para ver cómo ha evolucionado el tema."
+        instruccion_extra = "Tu respuesta debe tomar en consideración la fecha asociada a cada intervención para ver cómo ha evolucionado el tema."
 
     system_prompt = (
         f"{SYSTEM_PROMPT}"
@@ -146,9 +146,9 @@ def save_log(k_interventions, query, k, answer, strategy, csv_file = CSV_LOG_FIL
 def main():
     parser = argparse.ArgumentParser(description="Flujo de GraphRAG (Parte 2)")
     parser.add_argument("query", type=str, help="Pregunta a responder")
+    parser.add_argument("-k", type=int, default=K, help="Número de documentos a recuperar")
     parser.add_argument("--patron", type=int, required=True, choices=[RESTR_TIPADA, AGREGACION, FILTRO_TEMP], help=f"El frente a usar: {RESTR_TIPADA}(Tipado), {AGREGACION}(Contraste), {FILTRO_TEMP}(Numérico/Temporal)")
     parser.add_argument("--filtro", type=str, default="2020-01-01", help="Valor del filtro: Nombre de partido (para el patrón 1) o fecha (para el patrón 3)")
-    parser.add_argument("--k", type=int, default=5, help="Número de documentos a recuperar")
     args = parser.parse_args()
 
     print_header("BUSQUEDA SEMÁNTICA TOP-K INTERVENCIONES")
