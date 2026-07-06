@@ -1,14 +1,17 @@
 # SERVER URL
 URL = 'ws://localhost:1234'
 
-# API KEY
-API_KEY = 'api-key'
+# NOMBRE INDICE HNSW
+INDEX_NAME = "mi_indice"
+
+# ENTERO PARA BUSQUEDA TOP-K POR SIMILITUD COSENO 
+K = 5
 
 # EMBEDDING MODEL
 MODEL = 'intfloat/multilingual-e5-base'
 
-# ENTERO PARA TOP-K HNSW
-K = 5
+# API KEY
+API_KEY = 'api-key'
 
 # PROMPT DE SISTEMA
 SYSTEM_PROMPT = """
