@@ -86,6 +86,8 @@ Para abordar la tarea se decidió estructurar el trabajo como :
 .2 build\_sparse\_index.py.
 .2 sparse\_retriever.py.
 .2 schema.py.
+.2 queries.py.
+.2 utils.py.
 .2 output/.
 .3 sparse\_bm25\_index.pkl.
 }
@@ -267,4 +269,80 @@ En resumen :
 \end{mdframed}
 
 \section*{pregunta - 4}
+Se consolidaron las evaluaciones manuales disponibles en una tabla resumen por método y pregunta. Se dejan vacías las celdas donde todavía no hay agregación disponible.
+
+\begin{table}[h]
+\centering
+\small
+\renewcommand{\arraystretch}{1.15}
+\setlength{\tabcolsep}{6pt}
+\caption{Resumen de evaluación manual por método y pregunta}
+\label{tab:resumen-parte4}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{|l|c|c|c|c|c|c|c|c|c|}
+\hline
+\textbf{Método} & \textbf{$\bar{X}_{P1}$} & \textbf{$\bar{X}_{P2}$} & \textbf{$\bar{X}_{P3}$} & \textbf{$\bar{X}_{P4}$} & \textbf{$\bar{X}_{P5}$} & \textbf{$\bar{X}_{P6}$} & \textbf{$\bar{X}_{P7}$} & \textbf{$\bar{X}_{P8}$} & \textbf{$\bar{X}_{P9}$} \\
+\hline
+DENSO [COS] & 6.30 & 5.06 & 5.74 & 4.58 &  &  &  &  &  \\
+\hline
+GRAPH & 1.40 & 1.20 & 2.20 & 6.62 &  &  &  &  &  \\
+\hline
+SPARSE & 6.34 & 4.40 & 5.50 & 4.68 & 6.50 & 6.86 & 5.60 & 2.00 & 4.00 \\
+\hline
+RRF [HNSW + SPARSE] & 6.30 & 4.56 & 5.54 & 5.04 & 6.44 & 6.90 & 5.70 & 4.22 & 6.74 \\
+\hline
+\end{tabular}}
+\end{table}
+
+\subsection*{Visualizaciones y Análisis de Desempeño}
+
+En esta sección se presentan diversas visualizaciones para entender mejor el comportamiento de los modelos. \textit{Nota: estas visualizaciones se actualizarán y consolidarán una vez que se cuente con la totalidad de los datos manuales evaluados (actualmente hay celdas vacías en la tabla resumen).}
+
+\subsubsection*{Comparativa General y Desempeño por Pregunta}
+La Figura~\ref{fig:parte4-general} resume el desempeño promedio para las primeras 4 preguntas y la comparativa global por método. La Figura~\ref{fig:parte4-delta} resalta la ventaja o desventaja directa de utilizar RRF sobre SPARSE puro.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{output/parte4_notebook/comparativa_general.png}
+\caption{Comparación de métricas promedio por método (P1-P4) y global.}
+\label{fig:parte4-general}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.85\textwidth]{output/parte4_notebook/delta_rrf_sparse.png}
+\caption{Diferencia de desempeño promedio entre el híbrido (RRF) y SPARSE puro.}
+\label{fig:parte4-delta}
+\end{figure}
+
+\subsubsection*{Distribución y Variabilidad de Puntajes}
+Para no depender exclusivamente de la media, la Figura~\ref{fig:parte4-boxplot} muestra la distribución completa de los puntajes. Esto nos permite observar la mediana, la concentración de notas y los casos atípicos (outliers) en las evaluaciones humanas.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.9\textwidth]{output/parte4_notebook/boxplot_scores.png}
+\caption{Boxplot y stripplot mostrando la distribución real de los puntajes manuales por método.}
+\label{fig:parte4-boxplot}
+\end{figure}
+
+\subsubsection*{Diversidad de Documentos y Correlación de Similitud}
+Para entender mejor la calidad de los documentos recuperados, se analizó cuántos documentos únicos trae cada sistema y con qué frecuencia se repiten (Figura~\ref{fig:parte4-ids}). Además, se exploró si el puntaje de similitud crudo entregado por el modelo se correlaciona con la evaluación manual (Figura~\ref{fig:parte4-similitud}).
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{output/parte4_notebook/repeticion_ids.png}
+\caption{Análisis de diversidad (documentos únicos) y tasa de repetición de IDs por método.}
+\label{fig:parte4-ids}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.85\textwidth]{output/parte4_notebook/similitud_vs_score.png}
+\caption{Dispersión de la similitud del modelo frente al puntaje manual otorgado.}
+\label{fig:parte4-similitud}
+\end{figure}
+
+\subsubsection*{Análisis con Datos Completos (Próximamente)}
+\textit{[Espacio reservado: Una vez que se disponga del $100\%$ de los puntajes manuales para las 9 preguntas en todos los métodos, se incluirá aquí un análisis definitivo sobre la consistencia de los modelos y las conclusiones finales del experimento.]}
+
 \end{document}

@@ -39,35 +39,50 @@ class BM25Index:
         self.documents = documents
         self.k1 = k1
         self.b = b
-        self.tokenized_docs = [tokenize(doc.content) for doc in documents]
-        self.doc_lengths = [len(tokens) for tokens in self.tokenized_docs]
+        
+        tokenized_docs = [tokenize(doc.content) for doc in documents]
+        self.doc_lengths = [len(tokens) for tokens in tokenized_docs]
         self.avg_doc_length = (
             sum(self.doc_lengths) / len(self.doc_lengths) if self.doc_lengths else 0.0
         )
-        self.term_frequencies = [Counter(tokens) for tokens in self.tokenized_docs]
-        self.idf = self._compute_idf()
-
-    # construimos el indice de rareza para todos los docs 
-    def _compute_idf(self) -> dict[str, float]:
+        
+        # Construimos idf
         doc_freq = defaultdict(int)
-        total_docs = len(self.tokenized_docs)
-
-        for tokens in self.tokenized_docs:
+        total_docs = len(tokenized_docs)
+        for tokens in tokenized_docs:
             for token in set(tokens):
-                doc_freq[token] += 1 #construimos la freq de cada tok x documento.
-
-        return {
+                doc_freq[token] += 1
+        
+        self.idf = {
             token: math.log(1 + (total_docs - freq + 0.5) / (freq + 0.5))
             for token, freq in doc_freq.items()
         }
+        
+        # Inverted index real: token -> { doc_idx: term_frequency }
+        self.inverted_index = defaultdict(dict)
+        for idx, tokens in enumerate(tokenized_docs):
+            counter = Counter(tokens)
+            for token, freq in counter.items():
+                self.inverted_index[token][idx] = freq
+                
+        # Convertimos a dict normal para mejor performance y pickling
+        self.inverted_index = dict(self.inverted_index)
 
     def search(self, query: str, k: int = 5) -> list[RetrievalResult]:
+        return self.search_all(query)[:k]
+
+    def search_all(self, query: str) -> list[RetrievalResult]:
         query_tokens = tokenize(query)
         if not query_tokens or not self.documents:
             return []
 
+        candidate_docs = set()
+        for token in query_tokens:
+            if token in self.inverted_index:
+                candidate_docs.update(self.inverted_index[token].keys())
+
         scores = []
-        for idx, doc in enumerate(self.documents):
+        for idx in candidate_docs:
             score = self._score_document(query_tokens, idx)
             if score > 0:
                 scores.append((idx, score))
@@ -75,7 +90,7 @@ class BM25Index:
         scores.sort(key=lambda item: item[1], reverse=True)
 
         results = []
-        for rank, (idx, score) in enumerate(scores[:k], start=1):
+        for rank, (idx, score) in enumerate(scores, start=1):
             doc = self.documents[idx]
             results.append(
                 RetrievalResult(
@@ -90,15 +105,14 @@ class BM25Index:
         return results
 
     def _score_document(self, query_tokens: list[str], doc_idx: int) -> float:
-        tf = self.term_frequencies[doc_idx]
         doc_length = self.doc_lengths[doc_idx]
         score = 0.0
 
         for token in query_tokens:
-            freq = tf.get(token, 0)
-            if freq == 0:
+            if token not in self.inverted_index or doc_idx not in self.inverted_index[token]:
                 continue
-
+            
+            freq = self.inverted_index[token][doc_idx]
             idf = self.idf.get(token, 0.0)
             denominator = freq + self.k1 * (
                 1 - self.b + self.b * doc_length / self.avg_doc_length

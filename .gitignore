@@ -50,3 +50,4 @@ wheels/
 *.fdb_latexmk
 *.fls 
 *.out 
+*.txt

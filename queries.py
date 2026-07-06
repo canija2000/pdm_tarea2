@@ -45,9 +45,19 @@ LIMIT ?k
 # Reemplazos (?k)
 HNSW_TOP_K_QUERY = '''
 LET ?q = ?query_embedding
-CALL HNSW_TOP_K("mi_indice", ?q, ?k, 1000)
+CALL HNSW_TOP_K("hnsw_vectors", ?q, ?k, 1000)
 YIELD ?object AS ?c, ?distance
 RETURN ?c, ?c.content AS ?content, ?distance
+'''
+
+# Parametros (?query_embedding)
+# Reemplazos (?k)
+HNSW_TOP_K_WITH_INTERVENTION_QUERY = '''
+LET ?q = ?query_embedding
+CALL HNSW_TOP_K("hnsw_vectors", ?q, ?k, 1000)
+YIELD ?object AS ?c, ?distance
+MATCH (?i :Intervention)-[:HasEmbedding]->(?c)
+RETURN ?c, ?i, ?c.content AS ?content, ?distance
 '''
 
 # Parametros (?chunk)
@@ -93,7 +103,7 @@ RETURN ?chunk, ?chunk.content as ?content
 FROM_A_POLITICAL_PARTY = """
 LET ?q = ?query_embedding
 LET ?party_name = ?filtro
-CALL HNSW_TOP_K("mi_indice", ?q, ?n, 1000)
+CALL HNSW_TOP_K("hnsw_vectors", ?q, ?n, 1000)
 YIELD ?object AS ?c, ?distance
 MATCH (?i :Intervention)-[:HasEmbedding]->(?c)
 MATCH (?i)-[:DeliveredBy]->(?pos :Position)-[:Represents]->(?party :PoliticalParty)
@@ -107,7 +117,7 @@ LIMIT ?k
 # Reemplazos (?n, ?k)
 GENDER_AGG = """
 LET ?q = ?query_embedding
-CALL HNSW_TOP_K("mi_indice", ?q, ?n, 1000)
+CALL HNSW_TOP_K("hnsw_vectors", ?q, ?n, 1000)
 YIELD ?object AS ?c, ?distance
 MATCH (?i :Intervention)-[:HasEmbedding]->(?c)
 MATCH (?p :Person)-[:ServedAs]->(?pos :Position)<-[:DeliveredBy]-(?i)

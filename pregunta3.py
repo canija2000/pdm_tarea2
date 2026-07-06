@@ -1,8 +1,12 @@
 import argparse
 import csv
+import hashlib
 import os
+import pickle
 import uuid
 from datetime import datetime
+from functools import lru_cache
+from pathlib import Path
 
 from color_print import Colors, print_error, print_header, print_info, print_step, print_success
 from config import K, MODEL, SYSTEM_PROMPT, URL
@@ -23,6 +27,7 @@ SPARSE_MODE = "sparse"
 DENSE_MODE = "dense"
 HYBRID_MODE = "hybrid"
 CSV_LOG_FILE = "output/evaluacion_resultados.csv"
+SPARSE_CACHE_DIR = Path("output/sparse_cache")
 
 load_dotenv()
 
@@ -31,10 +36,53 @@ def retrieve_sparse(index: BM25Index, query: str, k: int) -> list[RetrievalResul
     return index.search(query, k=k)
 
 
+def retrieve_sparse_all(index: BM25Index, query: str) -> list[RetrievalResult]:
+    return index.search_all(query)
+
+
+def _sparse_cache_path(index_path: str, query: str) -> Path:
+    resolved_index = Path(index_path).resolve()
+    index_mtime = os.path.getmtime(resolved_index)
+    cache_key = hashlib.sha256(
+        f"{resolved_index}|{index_mtime:.6f}|{query}".encode("utf-8")
+    ).hexdigest()
+    return SPARSE_CACHE_DIR / f"{cache_key}.pkl"
+
+
+def load_cached_sparse_results(index_path: str, query: str) -> list[RetrievalResult] | None:
+    cache_path = _sparse_cache_path(index_path, query)
+    if not cache_path.exists():
+        return None
+
+    with cache_path.open("rb") as file:
+        payload = pickle.load(file)
+
+    return payload.get("results")
+
+
+def save_cached_sparse_results(index_path: str, query: str, results: list[RetrievalResult]) -> None:
+    SPARSE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    cache_path = _sparse_cache_path(index_path, query)
+    payload = {
+        "results": results,
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+        "index_path": str(Path(index_path).resolve()),
+    }
+
+    with cache_path.open("wb") as file:
+        pickle.dump(payload, file)
+
+
+@lru_cache(maxsize=1)
+def load_embedding_model() -> SentenceTransformer:
+    print_step(3, "Cargando modelo de embeddings para recuperacion densa...")
+    return SentenceTransformer(MODEL)
+
+
 def retrieve_dense(session, query_vector: list[float], k: int) -> list[RetrievalResult]:
     result = q_run(
         session,
-        q.HNSW_TOP_K_QUERY,
+        q.HNSW_TOP_K_WITH_INTERVENTION_QUERY,
         parameters={"query_embedding": query_vector},
         replaces={"k": k},
     )
@@ -42,16 +90,9 @@ def retrieve_dense(session, query_vector: list[float], k: int) -> list[Retrieval
     dense_results = []
     for rank, record in enumerate(result, start=1):
         chunk = record.get("c")
+        intervention = record.get("i")
         content = record.get("content")
         distance = record.get("distance")
-
-        intervention_result = q_run(
-            session,
-            q.GET_INTERVENTION,
-            parameters={"chunk": chunk},
-        )
-        intervention_record = intervention_result.records()[0]
-        intervention = intervention_record.get("i")
 
         dense_results.append(
             RetrievalResult(
@@ -75,14 +116,18 @@ def retrieve_context(
     sparse_candidates: int,
     index_path: str,
 ) -> list[RetrievalResult]:
-    index = BM25Index.load(index_path)
+    cached_sparse_results = load_cached_sparse_results(index_path, query)
+
+    if cached_sparse_results is None:
+        index = BM25Index.load(index_path)
+        cached_sparse_results = retrieve_sparse_all(index, query)
+        save_cached_sparse_results(index_path, query, cached_sparse_results)
 
     if mode == SPARSE_MODE:
-        return retrieve_sparse(index, query, k=k)
+        return cached_sparse_results[:k]
 
    
-    print_step(3, "Cargando modelo de embeddings para recuperacion densa...")
-    embedding_model = SentenceTransformer(MODEL)
+    embedding_model = load_embedding_model()
     query_vector = get_embedding(embedding_model, query)
 
     db = driver(URL)
@@ -95,7 +140,7 @@ def retrieve_context(
     finally:
         db.close()
 
-    sparse_results = retrieve_sparse(index, query, k=sparse_candidates)
+    sparse_results = cached_sparse_results[:sparse_candidates]
     return reciprocal_rank_fusion(dense_results, sparse_results, k=k)
 
 
